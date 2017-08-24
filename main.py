@@ -3,12 +3,11 @@ File name: main.py
 Description: Main script that handles user prompting.
 """
 
-# imports
 import argparse
 import os
 import exif
 
-# constant values
+# constant strings
 ARG_PROG_NAME = 'exif-gps-datetime-fix'
 ARG_DESC = 'A tool to fix EXIF GPS date and time stamps.'
 ARG_AUTO_APPLY = '--auto-apply'
@@ -20,7 +19,7 @@ ARG_AUTO_NO_BACKUP_HELP = 'Disables automatic backup of the original images. Ple
 ARG_IMAGE_PATH_LIST = 'pathlist'
 ARG_IMAGE_PATH_LIST_HELP = 'The folder/file(s) path(s) of the image(s) you want to edit.'
 ARG_RECURSIVE = '--recursive'
-ARG_RECURSIVE_HELP = 'If any folders are specified, then recurse through all the subfolders.'
+ARG_RECURSIVE_HELP = 'If any folders are specified/found, then recurse through all the subfolders.'
 ERR_NOT_VALID_IAMGE = 'ERROR: The image "{0}" is not a valid image.'
 ERR_PATH_DOES_NOT_EXIST = 'ERROR: The path "{0}" does not exist or this program does not have the proper permissions to access the file.'
 
@@ -51,7 +50,7 @@ def main():
             print(ERR_PATH_DOES_NOT_EXIST.format(path))
         else:
             if os.path.isdir(path): # if dir, get all files in dir
-                for root, dirnames, filenames in os.walk(path, topdown=True, followlinks=args.follow_symlinks):
+                for (root, dirnames, filenames) in os.walk(path, topdown=True, followlinks=args.follow_symlinks):
                     for filename in filenames:
                         tmplist = []
                         tmpfile = os.path.join(root, filename)
@@ -64,7 +63,7 @@ def main():
                         pathlist.extend(tmplist)
                 print(pathlist)
             elif os.path.isfile(path) and exif.ispicture(path):
-                pass
+                datetimedict = exif.getdatetime(path)
             else:
                 print(ERR_NOT_VALID_IAMGE.format(path))
 
