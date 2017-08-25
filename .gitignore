@@ -1,3 +1,6 @@
+# Taken from GitHub at https://github.com/github/gitignore/blob/master/Python.gitignore
+# under the Creative Commons Zero v1.0 Universal license.
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
