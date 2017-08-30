@@ -5,15 +5,16 @@ Description: Main script that handles user prompting.
 
 import argparse
 import os
+import re
 import shutil
-import stat
 import sys
 import time
-import exif
+import utils
 
 # message strings
 ANSWER_YES = 'Y'
 ANSWER_NO = 'N'
+ANSWER_REPEAT = 'R'
 MSG_BACKING_UP = 'Backing up all images to {0}...\n'
 MSG_DISCLAIMER = ('\n--------------------\n'
                   'DISCLAIMER:\n'
@@ -26,7 +27,7 @@ MSG_DISCLAIMER = ('\n--------------------\n'
                   'This tool automatically creates its own backups. {0}\n'
                   'By continuing on, you agree that you have already made your own proper backups '
                   'and do not hold the tool creator (me) liable for any damages or loss of any data.\n')
-MSG_PROMPT_DISCLAIMER = '\nPlease type {0} to accept this disclaimer or {1} to decline and exit the program: '
+MSG_PROMPT_DISCLAIMER = '\nPlease type Y to accept this disclaimer or N to decline and exit the program: '
 MSG_DISCLAIMER_AGREE = ('\nYou have agreed to the disclaimer.\n'
                         '--------------------\n')
 MSG_DISCLAIMER_DISAGREE = ('\nYou have disagreed to the disclaimer.\n'
@@ -36,30 +37,39 @@ MSG_DISCLAIMER_AUTO_AGREE = ('"--auto-apply" was set, automatically agreeing.\n'
                              '--------------------\n')
 MSG_DISCLAIMER_NO_BACKUP = ('However, by setting the "--no-backup" flag you have disabled automatic backups. '
                             'If this was an accident, exit the program and remove the flag.')
-MSG_USER_EXIT = '\nUser exit...\n'
-MSG_FINISH = '\nFinished, exiting...\n'
+MSG_GPS_DATETIME_NEW = ('New GPS date in UTC: {0}\n'
+                        'New GPS time in UTC: {1}')
+MSG_FINISH = '\n\nFinished, exiting...\n'
 MSG_IMAGE_DATE = ('Image: {0}\n'
-                  'Original date: {1} | GPS date: {2}\n'
-                  'Original time: {3}   | GPS time: {4}')
-MSG_INVALID_ANSWER_YN = 'Invalid answer, please enter {0} or {1}: '.format(ANSWER_YES, ANSWER_NO)
-MSG_PROMPT_APPLY = ('Do you want to replace the GPS date/time with the original date/time? '
-                    '({0}/{1}) '.format(ANSWER_YES, ANSWER_NO))
+                  'Original date: {1} | GPS date in UTC: {2}\n'
+                  'Original time: {3}   | GPS time in UTC: {4}')
+MSG_INVALID_ANSWER_YN = 'Invalid answer, please enter {0} or {1}: '
+MSG_PROMPT_REPLACE = ('Do you want to replace the GPS date/time with the original date/time? '
+                    '([Y]es/[N]o/[R]epeat): ')
+MSG_PROMPT_TIMEZONE = ('Time zone of the original date/time that this photo was taken '
+                       '(in the format {{+|-}}HH:MM) [{0}]: ')
+MSG_PROMPT_TIMEZONE_INVALID = ('Invalid time zone. '
+                               'Must be in the format {{+|-}}HH:MM. For example, "-0800" [{0}]: ')
 MSG_RESP_REPLACE_Y = 'Replacing GPS date/time...\n'
 MSG_RESP_REPLACE_N = 'Skipping replacement of GPS date/time...\n'
 MSG_SKIP_BACK_UP = 'Skipping backup of images...\n'
+MSG_USER_EXIT = '\n\nUser exit...\n'
 
 # error strings
 ERR_NOT_VALID_IAMGE = 'ERROR: The image "{0}" is not a valid image.'
 ERR_PATH_DOES_NOT_EXIST = ('ERROR: The path "{0}" does not exist or this program does not have '
                            'the proper permissions to access the file/folder.')
+ERR_TIMEZONE_INVALID = 'The timezone must be in the format {{+|-}}HHMM. For example, "-0800": '
+ERR_TIMEZONE_NOT_SET = '"--timezone" must be set when using "--auto".'
 
 # arg strings
 ARG_PROG_NAME = 'exif-gps-datetime-fix'
 ARG_DESC = 'A tool to fix EXIF GPS date and time stamps.'
-ARG_AUTO_APPLY = '--auto-apply'
-ARG_AUTO_APPLY_HELP = ('Automatically runs the program and applies all edits without confirmation. '
-                       'Will automatically backup images as well, unless the "--no-backup" flag is '
-                       'specified. Please note this auto agrees to the disclaimer.')
+ARG_AUTO = '--auto'
+ARG_AUTO_HELP = ('Automatically runs the program and applies all edits without confirmation. '
+                 'Will automatically backup images as well, unless the "--no-backup" flag is '
+                 'specified. Requires "--timezone" to be set. '
+                 'Please note this auto agrees to the disclaimer.')
 ARG_BACKUP_PATH = '--backup-path'
 ARG_BACKUP_PATH_HELP = ('Specifies the image backup path. '
                         'Default backup path is "/script_path/backup/". '
@@ -73,67 +83,10 @@ ARG_IMAGE_PATH_LIST = 'pathlist'
 ARG_IMAGE_PATH_LIST_HELP = 'The folder/file(s) path(s) of the image(s) you want to edit.'
 ARG_RECURSIVE = '--recursive'
 ARG_RECURSIVE_HELP = 'If any folders are specified/found, then recurse through all the subfolders.'
-
-def ignore_non_images(dirpath, filenames):
-    """
-    Generates ignores for shutil.copytree(). Ignores non images and follows dirs.
-
-    Parameters:
-    dirpath - The path of the directory itself.
-    filenames - A list of filenames in the directory.
-
-    Returns:
-    A list of filenames to ignore.
-    """
-    return [file for file in filenames
-            if not os.path.isdir(os.path.join(dirpath, file))
-            and not exif.isimage(os.path.join(dirpath, file))]
-
-def copytree_existing(src, dst, symlinks=False, ignore=None, copy_function=shutil.copy2, recursive=True):
-    """
-    A shutil.copytree clone that handles dst directory already existing.
-    Credits to Cyrille Pontvieux on Stack Overflow for this implementation:
-    https://stackoverflow.com/a/22331852/1993267
-    I've added some comments and changed some variables for readability on my end.
-
-    Parameters:
-    src - The source path.
-    dst - The destination path.
-    symlinks - True to copy symlinks, False to copy the file pointed to at symlink.
-    ignore - A list of files to ignore.
-    copy_function - The copy function to copy files with.
-
-    Returns:
-    Nothing.
-    """
-
-    # if dest path doesn't exist, make it and copy stat
-    if not os.path.exists(dst):
-        os.makedirs(dst)
-        shutil.copystat(src, dst)
-
-    # begin going through file list
-    filelist = os.listdir(src)
-    if ignore: # remove ignored files
-        excl = ignore(src, filelist)
-        filelist = [file for file in filelist if file not in excl]
-    for file in filelist:
-        srcfile = os.path.join(src, file)
-        dstfile = os.path.join(dst, file)
-        if symlinks and os.path.islink(srcfile): # handle symlinks as needed
-            if os.path.lexists(dstfile):
-                os.remove(dstfile)
-            os.symlink(os.readlink(srcfile), dstfile)
-            try:
-                srcstat = os.lstat(srcfile)
-                srcmode = stat.S_IMODE(srcstat.st_mode)
-                os.lchmod(dstfile, srcmode)
-            except:
-                pass # no lchmod
-        elif recursive and os.path.isdir(srcfile): # recurse on directories
-            copytree_existing(srcfile, dstfile, symlinks, ignore, copy_function)
-        else:
-            copy_function(srcfile, dstfile)
+ARG_TIMEZONE = '--timezone'
+ARG_TIMEZONE_HELP = ('Automatically applies the timezone used in calculating the new GPS date/time. '
+                     'Must be in the format {+|-}HHMM. For example, "-0800". '
+                     'If you are using "--auto", this arg must be specified.')
 
 def main():
     """
@@ -142,34 +95,42 @@ def main():
 
     # Create argument parser.
     # File/Folder argument(s): Folder(s)/file(s) to run the program on.
-    # --auto-apply: Automatically apply changes without user confirmation.
+    # --auto: Automatically apply changes without user confirmation. Requires --timezone
     # --backup-path: Backup path for images.
     # --follow-symlinks: Follows symlinks when using --recursive.
     # --no-backup: Disables automatic backup of the original images.
     # --recursive: If a directory path is specified, recurse through all subfolders.
+    # --timezone: Specifies timezone.
     # pathlist: List of paths to file/folders.
     parser = argparse.ArgumentParser(prog=ARG_PROG_NAME, description=ARG_DESC)
-    parser.add_argument(ARG_AUTO_APPLY, help=ARG_AUTO_APPLY_HELP, action='store_true')
+    parser.add_argument(ARG_AUTO, help=ARG_AUTO_HELP, action='store_true')
     backupgroup = parser.add_mutually_exclusive_group()
     backupgroup.add_argument(ARG_AUTO_NO_BACKUP, help=ARG_AUTO_NO_BACKUP_HELP, action='store_true')
     backupgroup.add_argument(ARG_BACKUP_PATH, help=ARG_BACKUP_PATH_HELP, action='store')
     parser.add_argument(ARG_FOLLOW_SYMLINKS, help=ARG_FOLLOW_SYMLINKS_HELP, action='store_true')
     parser.add_argument(ARG_RECURSIVE, help=ARG_RECURSIVE_HELP, action='store_true')
     parser.add_argument(ARG_IMAGE_PATH_LIST, nargs='+', help=ARG_IMAGE_PATH_LIST_HELP)
+    parser.add_argument(ARG_TIMEZONE, help=ARG_TIMEZONE_HELP)
     args = parser.parse_args()
-    print(args)
+
+    # arg parse checking
+    if args.auto and not args.timezone:
+        parser.error(ERR_TIMEZONE_NOT_SET)
+    if args.timezone:
+        if not re.search(utils.REGEX_TIMEZONE, args.timezone):
+            parser.error(ERR_TIMEZONE_INVALID)
 
     # disclaimer
     backupmsg = ''
     if args.no_backup:
         backupmsg = MSG_DISCLAIMER_NO_BACKUP
-    if args.auto_apply:
+    if args.auto:
         print(MSG_DISCLAIMER.format(backupmsg))
-        print(MSG_PROMPT_DISCLAIMER.format(ANSWER_YES, ANSWER_NO))
+        print(MSG_PROMPT_DISCLAIMER)
         print(MSG_DISCLAIMER_AUTO_AGREE)
     else:
         print(MSG_DISCLAIMER.format(backupmsg))
-        agreement = input(MSG_PROMPT_DISCLAIMER.format(ANSWER_YES, ANSWER_NO))
+        agreement = input(MSG_PROMPT_DISCLAIMER)
         while True:
             if agreement.upper() == ANSWER_YES:
                 print(MSG_DISCLAIMER_AGREE)
@@ -201,13 +162,14 @@ def main():
                 # from python 3.6.2 shutil docs: symlinks param - (which the function above mimics)
                 # "if false or omitted, the contents and metadata of the linked files are copied to the new tree"
                 # therefore, if follow_symlinks is set, we should negate it to copy symlinked files
-                copytree_existing(path, backuppath, symlinks=not args.follow_symlinks,
-                                  ignore=ignore_non_images, copy_function=shutil.copy2,
+                utils.copytree_existing(path, backuppath, symlinks=not args.follow_symlinks,
+                                  ignore=utils.ignore_non_images, copy_function=shutil.copy2,
                                   recursive=args.recursive)
-            elif os.path.isfile(path) and exif.isimage(path):
+            elif os.path.isfile(path) and utils.isimage(path):
                 shutil.copy2(path, backuppath, follow_symlinks=not args.follow_symlinks)
 
     # iterate through all path args
+    lasttz = args.timezone or time.strftime('%z', time.localtime()) # get set or current tz
     pathlist = list(args.pathlist)
     while pathlist:
         path = pathlist.pop(0)
@@ -219,36 +181,53 @@ def main():
                     for filename in filenames:
                         tmplist = []
                         tmpfile = os.path.join(root, filename)
-                        if os.path.isfile(tmpfile) and exif.isimage(tmpfile): # get all images
+                        if os.path.isfile(tmpfile) and utils.isimage(tmpfile): # get all images
                             tmplist.append(tmpfile)
                         if args.recursive: # go through subdirs if recrusive enabled
                             for dirname in dirnames:
                                 tmpdir = os.path.join(root, dirname)
                                 tmplist.append(tmpdir)
                         pathlist.extend(tmplist) # add files/subdirs to the list
-            elif os.path.isfile(path) and exif.isimage(path): # valid image file
+            elif os.path.isfile(path) and utils.isimage(path): # valid image file
 
                 # get EXIF date/time
-                datetimedict = exif.getdatetime(path)
-
-                originaltime = datetimedict['originaltime']
-                otime_arrstr = time.strftime(exif.TIME_FORMAT, originaltime).split(' ')
-                odatestr = otime_arrstr[0]
-                otimestr = otime_arrstr[1]
-
-                gpstime = datetimedict['gpstime']
-                gtime_arrstr = time.strftime(exif.TIME_FORMAT, gpstime).split(' ')
-                gdatestr = gtime_arrstr[0]
-                gtimestr = gtime_arrstr[1]
-
-                # print original and GPS date/time, prompt for replacement
+                datetimedict = utils.getdatetime(path)
+                originaldatetime = datetimedict['originaldatetime']
+                odtdict = utils.datetime_to_str(originaldatetime)
+                odatestr = odtdict['date']
+                otimestr = odtdict['time']
+                gpsdatetime = datetimedict['gpsdatetime']
+                gdtdict = utils.datetime_to_str(gpsdatetime)
+                gdatestr = gdtdict['date']
+                gtimestr = gdtdict['time']
                 print(MSG_IMAGE_DATE.format(path, odatestr, gdatestr, otimestr, gtimestr))
-                if args.auto_apply:
+
+                # calculate time zone since GPS time is in UTC
+                tzstr = lasttz
+                if args.timezone:
+                    print(MSG_PROMPT_TIMEZONE.format(lasttz))
+                else:
+                    tzstr = input(MSG_PROMPT_TIMEZONE.format(lasttz)) or lasttz
+                    while True:
+                        if re.match(utils.REGEX_TIMEZONE, tzstr):
+                            break
+                        else:
+                            tzstr = input(MSG_PROMPT_TIMEZONE_INVALID.format(lasttz)) or lasttz
+                lasttz = tzstr
+                tzdelta = utils.tzoffset_to_timedelta(tzstr)
+                utcdatetime = originaldatetime - tzdelta
+                utcdict = utils.datetime_to_str(utcdatetime)
+                utcdatestr = utcdict['date']
+                utctimestr = utcdict['time']
+                print(MSG_GPS_DATETIME_NEW.format(utcdatestr, utctimestr))
+
+                # replace auto/prompt
+                repeat = False
+                if args.auto:
                     replace = True
                 else:
-                    replaceinput = input(MSG_PROMPT_APPLY)
+                    replaceinput = input(MSG_PROMPT_REPLACE)
                     replace = False
-
                 while not replace:
                     if replaceinput.upper() == ANSWER_YES:
                         replace = True
@@ -256,15 +235,22 @@ def main():
                     elif replaceinput.upper() == ANSWER_NO:
                         replace = False
                         break
+                    elif replaceinput.upper() == ANSWER_REPEAT:
+                        repeat = True
+                        break
                     else:
                         replaceinput = input(MSG_INVALID_ANSWER_YN)
+                if repeat:
+                    pathlist.insert(0, path)
+                    print()
+                    continue
 
                 if not replace: # no replace, move on
                     print(MSG_RESP_REPLACE_N)
                     continue
                 else: # replace
                     print(MSG_RESP_REPLACE_Y)
-                    #exif.setgpsdatetime(path, originaldate, originaltime)
+                    #setgpsdatetime(path, newdatetime)
             else: # not a file and/or image
                 print(ERR_NOT_VALID_IAMGE.format(path))
 
