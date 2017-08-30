@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 import sys
+import time
 import exif
 
 # message strings
@@ -24,8 +25,8 @@ MSG_DISCLAIMER = ('\n--------------------\n'
                   'the unlikely chance that it may still damage your image or even other EXIF data.\n'
                   'This tool automatically creates its own backups. {0}\n'
                   'By continuing on, you agree that you have already made your own proper backups '
-                  'and do not hold the tool creator (me) liable for any damages or loss of any data.\n'
-                  '\nPlease type {1} to accept this disclaimer or {2} to decline and exit the program: ')
+                  'and do not hold the tool creator (me) liable for any damages or loss of any data.\n')
+MSG_PROMPT_DISCLAIMER = '\nPlease type {0} to accept this disclaimer or {1} to decline and exit the program: '
 MSG_DISCLAIMER_AGREE = ('\nYou have agreed to the disclaimer.\n'
                         '--------------------\n')
 MSG_DISCLAIMER_DISAGREE = ('\nYou have disagreed to the disclaimer.\n'
@@ -35,8 +36,8 @@ MSG_DISCLAIMER_AUTO_AGREE = ('"--auto-apply" was set, automatically agreeing.\n'
                              '--------------------\n')
 MSG_DISCLAIMER_NO_BACKUP = ('However, by setting the "--no-backup" flag you have disabled automatic backups. '
                             'If this was an accident, exit the program and remove the flag.')
-MSG_EXIT = 'Exiting...\n'
-MSG_FINISH = 'Finished, exiting...\n'
+MSG_USER_EXIT = '\nUser exit...\n'
+MSG_FINISH = '\nFinished, exiting...\n'
 MSG_IMAGE_DATE = ('Image: {0}\n'
                   'Original date: {1} | GPS date: {2}\n'
                   'Original time: {3}   | GPS time: {4}')
@@ -57,8 +58,8 @@ ARG_PROG_NAME = 'exif-gps-datetime-fix'
 ARG_DESC = 'A tool to fix EXIF GPS date and time stamps.'
 ARG_AUTO_APPLY = '--auto-apply'
 ARG_AUTO_APPLY_HELP = ('Automatically runs the program and applies all edits without confirmation. '
-                       'Will automatically backup images as well, unless the '
-                       '"--no-backup" flag is specified.')
+                       'Will automatically backup images as well, unless the "--no-backup" flag is '
+                       'specified. Please note this auto agrees to the disclaimer.')
 ARG_BACKUP_PATH = '--backup-path'
 ARG_BACKUP_PATH_HELP = ('Specifies the image backup path. '
                         'Default backup path is "/script_path/backup/". '
@@ -154,7 +155,7 @@ def main():
     backupgroup.add_argument(ARG_BACKUP_PATH, help=ARG_BACKUP_PATH_HELP, action='store')
     parser.add_argument(ARG_FOLLOW_SYMLINKS, help=ARG_FOLLOW_SYMLINKS_HELP, action='store_true')
     parser.add_argument(ARG_RECURSIVE, help=ARG_RECURSIVE_HELP, action='store_true')
-    parser.add_argument(ARG_IMAGE_PATH_LIST, nargs='*', help=ARG_IMAGE_PATH_LIST_HELP)
+    parser.add_argument(ARG_IMAGE_PATH_LIST, nargs='+', help=ARG_IMAGE_PATH_LIST_HELP)
     args = parser.parse_args()
     print(args)
 
@@ -163,10 +164,12 @@ def main():
     if args.no_backup:
         backupmsg = MSG_DISCLAIMER_NO_BACKUP
     if args.auto_apply:
-        print(MSG_DISCLAIMER.format(backupmsg, ANSWER_YES, ANSWER_NO))
+        print(MSG_DISCLAIMER.format(backupmsg))
+        print(MSG_PROMPT_DISCLAIMER.format(ANSWER_YES, ANSWER_NO))
         print(MSG_DISCLAIMER_AUTO_AGREE)
     else:
-        agreement = input(MSG_DISCLAIMER.format(backupmsg, ANSWER_YES, ANSWER_NO))
+        print(MSG_DISCLAIMER.format(backupmsg))
+        agreement = input(MSG_PROMPT_DISCLAIMER.format(ANSWER_YES, ANSWER_NO))
         while True:
             if agreement.upper() == ANSWER_YES:
                 print(MSG_DISCLAIMER_AGREE)
@@ -227,13 +230,19 @@ def main():
 
                 # get EXIF date/time
                 datetimedict = exif.getdatetime(path)
-                originaldate = datetimedict['originaldate']
+
                 originaltime = datetimedict['originaltime']
-                gpsdate = datetimedict['gpsdate']
+                otime_arrstr = time.strftime(exif.TIME_FORMAT, originaltime).split(' ')
+                odatestr = otime_arrstr[0]
+                otimestr = otime_arrstr[1]
+
                 gpstime = datetimedict['gpstime']
+                gtime_arrstr = time.strftime(exif.TIME_FORMAT, gpstime).split(' ')
+                gdatestr = gtime_arrstr[0]
+                gtimestr = gtime_arrstr[1]
 
                 # print original and GPS date/time, prompt for replacement
-                print(MSG_IMAGE_DATE.format(path, originaldate, gpsdate, originaltime, gpstime))
+                print(MSG_IMAGE_DATE.format(path, odatestr, gdatestr, otimestr, gtimestr))
                 if args.auto_apply:
                     replace = True
                 else:
@@ -267,8 +276,8 @@ if __name__ == '__main__':
     try:
         main()
     except EOFError:
-        print(MSG_EXIT)
+        print(MSG_USER_EXIT)
         exit()
     except KeyboardInterrupt:
-        print(MSG_EXIT)
+        print(MSG_USER_EXIT)
         exit()
