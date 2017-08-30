@@ -90,7 +90,7 @@ def datetime_to_str(dt):
     }
     return dtdict
 
-def getdatetime(path):
+def getdatetime(path): # TODO: use the actual datetime class and not use the old string parsing methods
     """
     Gets the original date time, GPS date, and GPS time EXIF tags of the image
 
@@ -157,7 +157,7 @@ def isimage(path):
         return False
 
 
-def setgpsdatetime(path, newdatetime):
+def setgpsdatetime(path, newdatetime): # TODO: use the actual datetime class and not use the old string parsing methods
     """
     Sets the GPS date and time with the passed in parameters.
 

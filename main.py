@@ -43,7 +43,7 @@ MSG_FINISH = '\n\nFinished, exiting...\n'
 MSG_IMAGE_DATE = ('Image: {0}\n'
                   'Original date: {1} | GPS date in UTC: {2}\n'
                   'Original time: {3}   | GPS time in UTC: {4}')
-MSG_INVALID_ANSWER_YN = 'Invalid answer, please enter {0} or {1}: '
+MSG_INVALID_ANSWER_YN = 'Invalid answer, please enter Y or N: '
 MSG_PROMPT_REPLACE = ('Do you want to replace the GPS date/time with the original date/time? '
                     '([Y]es/[N]o/[R]epeat): ')
 MSG_PROMPT_TIMEZONE = ('Time zone of the original date/time that this photo was taken '
@@ -250,7 +250,7 @@ def main():
                     continue
                 else: # replace
                     print(MSG_RESP_REPLACE_Y)
-                    #setgpsdatetime(path, newdatetime)
+                    utils.setgpsdatetime(path, utcdatetime)
             else: # not a file and/or image
                 print(ERR_NOT_VALID_IAMGE.format(path))
 
