@@ -69,7 +69,7 @@ def copytree_existing(src, dst, symlinks=False, ignore=None, copy_function=shuti
         else:
             copy_function(srcfile, dstfile)
 
-def datetime_to_str(dt):
+def datetime_to_str(dtstr):
     """
     Converts a Python datetime to a dictionary.
 
@@ -81,7 +81,7 @@ def datetime_to_str(dt):
     - 'date': "YYYY-MM-DD"
     - 'time': "HH:MM:SS"
     """
-    dtarr = dt.strftime(DATETIME_FORMAT).split(' ')
+    dtarr = dtstr.strftime(DATETIME_FORMAT).split(' ')
     datestr = dtarr[0]
     timestr = dtarr[1]
     dtdict = {
@@ -90,7 +90,7 @@ def datetime_to_str(dt):
     }
     return dtdict
 
-def getdatetime(path): # TODO: use the actual datetime class and not use the old string parsing methods
+def getdatetime(path):
     """
     Gets the original date time, GPS date, and GPS time EXIF tags of the image
 
@@ -98,7 +98,9 @@ def getdatetime(path): # TODO: use the actual datetime class and not use the old
     path - String of the path to the image.
 
     Returns:
-    A dictionary with 'originaltime' and 'gpstime' which are both in Python datetime format.
+    A dictionary with:
+    - 'originaldatetime': The original date/time in the datetime format.
+    - 'gpsdatetime': The GPS date/time in datetime format. UTC.
     """
 
     # Load EXIF data and the relevant args
@@ -157,7 +159,7 @@ def isimage(path):
         return False
 
 
-def setgpsdatetime(path, newdatetime): # TODO: use the actual datetime class and not use the old string parsing methods
+def setgpsdatetime(path, newdatetime):
     """
     Sets the GPS date and time with the passed in parameters.
 
