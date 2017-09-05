@@ -22,7 +22,7 @@ You can see these at any time with `-h` or `--help`.
 * `--backup-path [BACKUP_PATH]`: Specifies the image backup path. Default backup path is `/script_path/backup/`. This arg is not allowed if `--no-backup` is specified.
 * `--follow-symlinks`: Follows symlinks when using `--recurisve`.
 * `--recursive`: If any folders are specified/found, then recurse through all subfolders.
-* `--timezone [TIMEZONE]`: Automatically applies the time zone used in calculating the new GPS date/time. Must be in the format {+|-}HHMM. For example, "-0800". If you are using "--auto", this arg must be specified.
+* `--timezone [TIMEZONE]`: Automatically applies the time zone used in calculating the new GPS date/time. Must be in the format `{+|-}HHMM`. For example, `-0800`. If you are using `--auto`, this arg must be specified.
 
 ## Credits
 * [piexif](https://pypi.python.org/pypi/piexif) (MIT License)
